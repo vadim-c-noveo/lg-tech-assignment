@@ -1,0 +1,106 @@
+openapi: 3.0.3
+info:
+  title: Staffea Authentication API
+  description: This API permits to register and authenticate a user
+  version: 0.1.0
+servers:
+  - url: /
+    description: ''
+  - url: http://localhost:8080
+    description: Running local dev server
+paths:
+  /auth/register:
+    post:
+      tags:
+        - authentication
+      summary: Register new user
+      description: Register new user
+      requestBody:
+        description: register body
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/input.auth'
+      responses:
+        '200':
+          description: It returns authentication tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/output.auth'
+        '400':
+          description: erroneous format
+      parameters:
+        - $ref: '#/components/parameters/provider'
+  
+components:
+  parameters:
+    provider:
+      name: X-Provider
+      in: header
+      description: The provider ID
+      required: true
+      deprecated: false
+      allowEmptyValue: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 2147483647
+      explode: false
+      allowReserved: false
+      example: 1
+  schemas:
+    input.auth:
+      required:
+        - login
+        - password
+        - uuid
+        - privacyAccepted
+      type: object
+      description: auth input
+      properties:
+        login:
+          type: string
+          pattern: ^[A-Za-z0-9]+$
+          minLength: 6
+          maxLength: 255
+          description: user login
+          example: login1
+          nullable: false
+        password:
+          type: string
+          example: password
+          minLength: 8
+          maxLength: 255
+          description: user password
+          nullable: false
+        uuid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$
+          description: invitation uuid
+          nullable: true
+        privacyAccepted:
+          type: boolean
+          nullable: true
+    output.auth:
+      type: object
+      description: output authentication
+      properties:
+        login:
+          type: string
+          description: user login
+          example: login
+        refreshToken:
+          type: string
+          description: jwt authentication refresh token
+        accessToken:
+          type: string
+          description: jwt authentication accessToken
+        provider:
+          type: integer
+          description: provider id
+          example: 1
+        locale:
+          type: string
+          description: locale
+          example: fr_FR
