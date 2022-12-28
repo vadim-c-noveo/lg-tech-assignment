@@ -7,7 +7,7 @@ servers:
   - url: /
     description: ''
   - url: http://localhost:8080
-    description: Running local dev server
+    description: Running local dev app
 paths:
   /auth/register:
     post:
