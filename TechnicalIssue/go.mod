@@ -6,6 +6,7 @@ require (
 	github.com/gin-gonic/gin v1.8.2
 	github.com/google/uuid v1.3.0
 	github.com/tidwall/sjson v1.2.5
+	github.com/valyala/fastjson v1.6.3
 )
 
 require (

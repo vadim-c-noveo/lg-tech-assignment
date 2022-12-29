@@ -1,10 +1,13 @@
 package main
 
 import (
+  "bufio"
   "bytes"
+  "net"
   "net/http"
   "net/http/httputil"
   "net/url"
+  "strconv"
 
   "github.com/gin-gonic/gin"
   "github.com/google/uuid"
@@ -43,6 +46,11 @@ import (
  * You cannot use the proxy Director method to modify the response
  * The resolution must be not dependant of the api object, should work for products, comments or todos.
  */
+
+const (
+  noWritten     = -1
+  defaultStatus = 200
+)
 
 // main app start, creates a gin app listening and :8080.
 func main() {
@@ -85,24 +93,103 @@ func proxy() gin.HandlerFunc {
 // signature middleware add a custom signature field in the output payload with auto-generated uuid
 func signature() gin.HandlerFunc {
   return func(c *gin.Context) {
-    w := &responseBodyWriter{body: &bytes.Buffer{}, ResponseWriter: c.Writer}
-    c.Writer = w
-    c.Next()
+    var bw *ResponseBodyWriter
+    if w, ok := c.Writer.(gin.ResponseWriter); ok {
+      bw = NewResponseBodyWriter(w)
+      c.Writer = bw
+      c.Next()
+    } else {
+      c.Next()
+      return
+    }
+
+    requestID, err := uuid.NewUUID()
+    if err != nil {
+      panic(err.Error())
+    }
+
+    res, _ := sjson.Set(string(bw.Body.Bytes()), "uuid", requestID)
+    bw.Body.Reset()
+    enrichedBody := []byte(res)
+    bw.Body.Write(enrichedBody)
+
+    bw.Header().Set("Content-Type", "application/json")
+    bw.Header().Set("Content-Length", strconv.Itoa(bw.Body.Len()))
+
+    bw.Flush()
   }
 }
 
-type responseBodyWriter struct {
-  gin.ResponseWriter
-  body *bytes.Buffer
+type ResponseBodyWriter struct {
+  Response gin.ResponseWriter // actual gin.ResponseWriter
+  status   int
+  Body     *bytes.Buffer // response body
+  Flushed  bool
 }
 
-func (r responseBodyWriter) Write(b []byte) (int, error) {
-  requestID, err := uuid.NewUUID()
-  if err != nil {
-    return 0, err
+func (w *ResponseBodyWriter) Pusher() http.Pusher {
+  if pusher, ok := w.Response.(http.Pusher); ok {
+    return pusher
   }
-  res, _ := sjson.Set(string(b), "uuid", requestID)
-  enrichedBody := []byte(res)
-  r.body.Write(enrichedBody)
-  return r.ResponseWriter.Write(enrichedBody)
+  return nil
+}
+
+func NewResponseBodyWriter(c gin.ResponseWriter) *ResponseBodyWriter {
+  return &ResponseBodyWriter{Response: c, status: defaultStatus, Body: &bytes.Buffer{}}
+}
+
+func (w *ResponseBodyWriter) Header() http.Header {
+  return w.Response.Header()
+}
+
+func (w *ResponseBodyWriter) Write(buf []byte) (int, error) {
+  w.Body.Write(buf)
+  return len(buf), nil
+}
+
+func (w *ResponseBodyWriter) WriteString(s string) (n int, err error) {
+  n, err = w.Write([]byte(s))
+  return
+}
+
+func (w *ResponseBodyWriter) Written() bool {
+  return w.Body.Len() != noWritten
+}
+
+func (w *ResponseBodyWriter) WriteHeader(status int) {
+  w.status = status
+}
+
+func (w *ResponseBodyWriter) WriteHeaderNow() {
+}
+
+func (w *ResponseBodyWriter) Status() int {
+  return w.status
+}
+
+func (w *ResponseBodyWriter) Size() int {
+  return w.Body.Len()
+}
+
+func (w *ResponseBodyWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+  return w.Response.(http.Hijacker).Hijack()
+}
+
+func (w *ResponseBodyWriter) CloseNotify() <-chan bool {
+  return w.Response.(http.CloseNotifier).CloseNotify()
+}
+
+func (w *ResponseBodyWriter) Flush() {
+  if w.Flushed {
+    return
+  }
+  w.Response.WriteHeader(w.status)
+  if w.Body.Len() > 0 {
+    _, err := w.Response.Write(w.Body.Bytes())
+    if err != nil {
+      panic(err)
+    }
+    w.Body.Reset()
+  }
+  w.Flushed = true
 }
